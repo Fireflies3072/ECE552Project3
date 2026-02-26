@@ -131,6 +131,207 @@ module hart #(
 `endif
 );
     // Fill in your implementation here.
+
+    // PC Register
+    reg[31:0] pc;
+    always @(posedge i_clk) begin
+        if (i_rst) begin
+            pc <= RESET_ADDR;
+        end else begin
+            pc <= next_pc;
+        end
+    end
+
+    // Instruction Fetch
+    assign o_imem_raddr = pc;
+    wire[31:0] inst = i_imem_rdata;
+
+    // Decode
+    wire[6:0] opcode = inst[6:0];
+    wire[2:0] funct3 = inst[14:12];
+    wire[6:0] funct7 = inst[31:25];
+    wire[4:0] rs1_addr = inst[19:15];
+    wire[4:0] rs2_addr = inst[24:20];
+    wire[4:0] rd_addr = inst[11:7];
+
+    wire reg_wen, alu_src1, alu_src2, mem_ren, mem_wen, branch, jump, jalr, halt;
+    wire[3:0] alu_op;
+    wire[1:0] wb_mux;
+
+    control_unit ctrl (
+        .i_opcode(opcode),
+        .i_funct3(funct3),
+        .i_funct7(funct7),
+        .o_reg_wen(reg_wen),
+        .o_alu_src1(alu_src1),
+        .o_alu_src2(alu_src2),
+        .o_alu_op(alu_op),
+        .o_mem_ren(mem_ren),
+        .o_mem_wen(mem_wen),
+        .o_wb_mux(wb_mux),
+        .o_branch(branch),
+        .o_jump(jump),
+        .o_jalr(jalr),
+        .o_halt(halt)
+    );
+
+    wire[31:0] imm;
+    imm_gen imm_g (
+        .i_inst(inst),
+        .o_imm(imm)
+    );
+
+    wire[31:0] rs1_data, rs2_data;
+    reg[31:0] rd_data;
+    regfile rf (
+        .i_clk(i_clk),
+        .i_rs1_addr(rs1_addr),
+        .i_rs2_addr(rs2_addr),
+        .i_rd_addr(rd_addr),
+        .i_rd_data(rd_data),
+        .i_rd_wen(reg_wen),
+        .o_rs1_data(rs1_data),
+        .o_rs2_data(rs2_data)
+    );
+
+    // Execute
+    wire[31:0] alu_op_a = (alu_src1) ? pc : rs1_data;
+    wire[31:0] alu_op_b = (alu_src2) ? imm : rs2_data;
+    wire[31:0] alu_result;
+    wire alu_zero;
+    alu alu_inst (
+        .i_a(alu_op_a),
+        .i_b(alu_op_b),
+        .i_alu_op(alu_op),
+        .o_result(alu_result),
+        .o_zero(alu_zero)
+    );
+
+    // Branch/Jump Logic
+    reg take_branch;
+    always @(*) begin
+        case (funct3)
+            3'b000: take_branch = alu_zero; // beq
+            3'b001: take_branch = !alu_zero; // bne
+            3'b100: take_branch = !alu_zero; // blt
+            3'b101: take_branch = alu_zero; // bge
+            3'b110: take_branch = !alu_zero; // bltu
+            3'b111: take_branch = alu_zero; // bgeu
+            default: take_branch = 0;
+        endcase
+    end
+
+    wire[31:0] pc_plus_4 = pc + 4;
+    wire[31:0] branch_target = pc + imm;
+    wire[31:0] jalr_target = alu_result & ~32'h1;
+    wire[31:0] next_pc = (jump) ? branch_target :
+                          (jalr) ? jalr_target :
+                          (branch && take_branch) ? branch_target :
+                          pc_plus_4;
+
+    // Memory Access
+    assign o_dmem_addr = {alu_result[31:2], 2'b00};
+    assign o_dmem_ren = mem_ren;
+    assign o_dmem_wen = mem_wen;
+    
+    // Memory Mask and Write Data
+    reg[3:0] dmem_mask;
+    reg[31:0] dmem_wdata;
+    always @(*) begin
+        dmem_mask = 4'b0000;
+        dmem_wdata = 32'd0;
+        if (mem_wen) begin
+            case (funct3)
+                3'b000: begin // sb
+                    dmem_mask = 4'b0001 << alu_result[1:0];
+                    dmem_wdata = {rs2_data[7:0], rs2_data[7:0], rs2_data[7:0], rs2_data[7:0]};
+                end
+                3'b001: begin // sh
+                    dmem_mask = (alu_result[1]) ? 4'b1100 : 4'b0011;
+                    dmem_wdata = {rs2_data[15:0], rs2_data[15:0]};
+                end
+                3'b010: begin // sw
+                    dmem_mask = 4'b1111;
+                    dmem_wdata = rs2_data;
+                end
+            endcase
+        end else if (mem_ren) begin
+            case (funct3)
+                3'b000, 3'b100: dmem_mask = 4'b0001 << alu_result[1:0]; // lb, lbu
+                3'b001, 3'b101: dmem_mask = (alu_result[1]) ? 4'b1100 : 4'b0011; // lh, lhu
+                3'b010: dmem_mask = 4'b1111; // lw
+            endcase
+        end
+    end
+    assign o_dmem_mask = dmem_mask;
+    assign o_dmem_wdata = dmem_wdata;
+
+    // Load Data Processing
+    reg [31:0] load_data;
+    always @(*) begin
+        case (funct3)
+            3'b000: begin // lb
+                case (alu_result[1:0])
+                    2'b00: load_data = {{24{i_dmem_rdata[7]}}, i_dmem_rdata[7:0]};
+                    2'b01: load_data = {{24{i_dmem_rdata[15]}}, i_dmem_rdata[15:8]};
+                    2'b10: load_data = {{24{i_dmem_rdata[23]}}, i_dmem_rdata[23:16]};
+                    2'b11: load_data = {{24{i_dmem_rdata[31]}}, i_dmem_rdata[31:24]};
+                endcase
+            end
+            3'b001: begin // lh
+                case (alu_result[1:0])
+                    2'b00: load_data = {{16{i_dmem_rdata[15]}}, i_dmem_rdata[15:0]};
+                    2'b10: load_data = {{16{i_dmem_rdata[31]}}, i_dmem_rdata[31:16]};
+                    default: load_data = 32'd0;
+                endcase
+            end
+            3'b010: load_data = i_dmem_rdata; // lw
+
+            3'b100: begin // lbu
+                case (alu_result[1:0])
+                    2'b00: load_data = {24'd0, i_dmem_rdata[7:0]};
+                    2'b01: load_data = {24'd0, i_dmem_rdata[15:8]};
+                    2'b10: load_data = {24'd0, i_dmem_rdata[23:16]};
+                    2'b11: load_data = {24'd0, i_dmem_rdata[31:24]};
+                endcase
+            end
+            3'b101: begin // lhu
+                case (alu_result[1:0])
+                    2'b00: load_data = {16'd0, i_dmem_rdata[15:0]};
+                    2'b10: load_data = {16'd0, i_dmem_rdata[31:16]};
+                    default: load_data = 32'd0;
+                endcase
+            end
+
+            default: load_data = 32'd0;
+        endcase
+    end
+
+    // Writeback
+    always @(*) begin
+        case (wb_mux)
+            2'd0: rd_data = alu_result;
+            2'd1: rd_data = load_data;
+            2'd2: rd_data = pc_plus_4;
+            2'd3: rd_data = imm;
+            default: rd_data = 32'd0;
+        endcase
+    end
+
+    // Retire Interface
+    assign o_retire_valid = !i_rst;
+    assign o_retire_inst = inst;
+    assign o_retire_trap = 0;
+    assign o_retire_halt = halt;
+    assign o_retire_rs1_raddr = rs1_addr;
+    assign o_retire_rs2_raddr = rs2_addr;
+    assign o_retire_rs1_rdata = rs1_data;
+    assign o_retire_rs2_rdata = rs2_data;
+    assign o_retire_rd_waddr = (reg_wen) ? rd_addr : 5'd0;
+    assign o_retire_rd_wdata = rd_data;
+    assign o_retire_pc = pc;
+    assign o_retire_next_pc = next_pc;
+
 endmodule
 
 `default_nettype wire

@@ -1,0 +1,5 @@
+tests/asm/*.hex
+tests/asm/*.o
+tb/*.out
+tb/program.mem
+traces/*.trace
