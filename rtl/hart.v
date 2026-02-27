@@ -134,6 +134,8 @@ module hart #(
 
     // PC Register
     reg[31:0] pc;
+    wire[31:0] next_pc;
+
     always @(posedge i_clk) begin
         if (i_rst) begin
             pc <= RESET_ADDR;
@@ -224,7 +226,7 @@ module hart #(
     wire[31:0] pc_plus_4 = pc + 4;
     wire[31:0] branch_target = pc + imm;
     wire[31:0] jalr_target = alu_result & ~32'h1;
-    wire[31:0] next_pc = (jump) ? branch_target :
+    assign next_pc = (jump) ? branch_target :
                           (jalr) ? jalr_target :
                           (branch && take_branch) ? branch_target :
                           pc_plus_4;
@@ -254,12 +256,14 @@ module hart #(
                     dmem_mask = 4'b1111;
                     dmem_wdata = rs2_data;
                 end
+                default: ;
             endcase
         end else if (mem_ren) begin
             case (funct3)
                 3'b000, 3'b100: dmem_mask = 4'b0001 << alu_result[1:0]; // lb, lbu
                 3'b001, 3'b101: dmem_mask = (alu_result[1]) ? 4'b1100 : 4'b0011; // lh, lhu
                 3'b010: dmem_mask = 4'b1111; // lw
+                default: ;
             endcase
         end
     end
@@ -276,6 +280,7 @@ module hart #(
                     2'b01: load_data = {{24{i_dmem_rdata[15]}}, i_dmem_rdata[15:8]};
                     2'b10: load_data = {{24{i_dmem_rdata[23]}}, i_dmem_rdata[23:16]};
                     2'b11: load_data = {{24{i_dmem_rdata[31]}}, i_dmem_rdata[31:24]};
+                    default: load_data = 32'd0;
                 endcase
             end
             3'b001: begin // lh
@@ -293,6 +298,7 @@ module hart #(
                     2'b01: load_data = {24'd0, i_dmem_rdata[15:8]};
                     2'b10: load_data = {24'd0, i_dmem_rdata[23:16]};
                     2'b11: load_data = {24'd0, i_dmem_rdata[31:24]};
+                    default: load_data = 32'd0;
                 endcase
             end
             3'b101: begin // lhu

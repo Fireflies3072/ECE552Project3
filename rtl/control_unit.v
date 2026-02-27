@@ -54,6 +54,7 @@ module control_unit (
                     3'b101: o_alu_op = (i_funct7[5]) ? ALU_SRA : ALU_SRL; // sra : srl
                     3'b110: o_alu_op = ALU_OR; // or
                     3'b111: o_alu_op = ALU_AND; // and
+                    default: o_alu_op = ALU_ADD;
                 endcase
             end
 
@@ -70,6 +71,7 @@ module control_unit (
                     3'b101: o_alu_op = (i_funct7[5]) ? ALU_SRA : ALU_SRL; // srai : srli
                     3'b110: o_alu_op = ALU_OR; // ori
                     3'b111: o_alu_op = ALU_AND; // andi
+                    default: o_alu_op = ALU_ADD;
                 endcase
             end
             7'b0000011: begin // I-type (load, ex. lb, ...)
@@ -93,6 +95,7 @@ module control_unit (
                     3'b000, 3'b001: o_alu_op = ALU_XOR; // beq, bne (use xor)
                     3'b100, 3'b101: o_alu_op = ALU_SLT; // blt, bge (use slt)
                     3'b110, 3'b111: o_alu_op = ALU_SLTU; // bltu, bgeu (use sltu)
+                    default: o_alu_op = ALU_ADD;
                 endcase
             end
 
@@ -127,6 +130,8 @@ module control_unit (
                     o_halt = 1;
                 end
             end
+
+            default: ;
         endcase
     end
 endmodule

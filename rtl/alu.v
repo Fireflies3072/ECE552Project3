@@ -2,7 +2,7 @@ module alu (
     input  wire[31:0] i_a,
     input  wire[31:0] i_b,
     input  wire[3:0]  i_alu_op,
-    output reg[31:0]  o_result,
+    output reg [31:0]  o_result,
     output wire       o_zero
 );
     // ALU arithmetic operations
@@ -26,13 +26,13 @@ module alu (
             ALU_SLTU: o_result = (i_a < i_b) ? 32'd1 : 32'd0;
             ALU_XOR:  o_result = i_a ^ i_b;
             ALU_SRL:  o_result = i_a >> i_b[4:0];
-            ALU_SRA:  o_result = $signed(i_a) >>> i_b[4:0];
+            ALU_SRA:  o_result = $unsigned($signed(i_a) >>> i_b[4:0]);
             ALU_OR:   o_result = i_a | i_b;
             ALU_AND:  o_result = i_a & i_b;
             default:  o_result = 32'd0;
         endcase
     end
-    
+
     // Zero flag
     assign o_zero = (o_result == 32'd0);
 
