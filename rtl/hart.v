@@ -248,21 +248,19 @@ module hart #(
                 case (funct3)
                     3'b000: begin // sb
                         case (alu_result[1:0])
-                            2'b00: dmem_mask = 4'b0001;
-                            2'b01: dmem_mask = 4'b0010;
-                            2'b10: dmem_mask = 4'b0100;
-                            2'b11: dmem_mask = 4'b1000;
-                            default: dmem_mask = 4'b0000;
+                            2'b00: begin dmem_mask = 4'b0001; dmem_wdata = {{24{rs2_data[7]}}, rs2_data[7:0]}; end
+                            2'b01: begin dmem_mask = 4'b0010; dmem_wdata = {{16{rs2_data[7]}}, rs2_data[7:0], 8'b0}; end
+                            2'b10: begin dmem_mask = 4'b0100; dmem_wdata = {{8{rs2_data[7]}}, rs2_data[7:0], 16'b0}; end
+                            2'b11: begin dmem_mask = 4'b1000; dmem_wdata = {rs2_data[7:0], 24'b0}; end
+                            default: begin dmem_mask = 4'b0000; dmem_wdata = 32'b0; end
                         endcase
-                        dmem_wdata = {rs2_data[7:0], rs2_data[7:0], rs2_data[7:0], rs2_data[7:0]};
                     end
                     3'b001: begin // sh
                         case (alu_result[1])
-                            1'b0: dmem_mask = 4'b0011;
-                            1'b1: dmem_mask = 4'b1100;
-                            default: dmem_mask = 4'b0000;
+                            1'b0: begin dmem_mask = 4'b0011; dmem_wdata = {{16{rs2_data[15]}}, rs2_data[15:0]}; end
+                            1'b1: begin dmem_mask = 4'b1100; dmem_wdata = {rs2_data[15:0], 16'b0}; end
+                            default: begin dmem_mask = 4'b0000; dmem_wdata = 32'b0; end
                         endcase
-                        dmem_wdata = {rs2_data[15:0], rs2_data[15:0]};
                     end
                     3'b010: begin // sw
                         dmem_mask = 4'b1111;
