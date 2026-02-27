@@ -187,6 +187,7 @@ module hart #(
     reg[31:0] rd_data;
     regfile rf (
         .i_clk(i_clk),
+        .i_rst(i_rst),
         .i_rs1_addr(rs1_addr),
         .i_rs2_addr(rs2_addr),
         .i_rd_addr(rd_addr),
@@ -242,30 +243,63 @@ module hart #(
     always @(*) begin
         dmem_mask = 4'b0000;
         dmem_wdata = 32'd0;
-        if (mem_wen) begin
-            case (funct3)
-                3'b000: begin // sb
-                    dmem_mask = 4'b0001 << alu_result[1:0];
-                    dmem_wdata = {rs2_data[7:0], rs2_data[7:0], rs2_data[7:0], rs2_data[7:0]};
-                end
-                3'b001: begin // sh
-                    dmem_mask = (alu_result[1]) ? 4'b1100 : 4'b0011;
-                    dmem_wdata = {rs2_data[15:0], rs2_data[15:0]};
-                end
-                3'b010: begin // sw
-                    dmem_mask = 4'b1111;
-                    dmem_wdata = rs2_data;
-                end
-                default: ;
-            endcase
-        end else if (mem_ren) begin
-            case (funct3)
-                3'b000, 3'b100: dmem_mask = 4'b0001 << alu_result[1:0]; // lb, lbu
-                3'b001, 3'b101: dmem_mask = (alu_result[1]) ? 4'b1100 : 4'b0011; // lh, lhu
-                3'b010: dmem_mask = 4'b1111; // lw
-                default: ;
-            endcase
-        end
+        case (mem_wen)
+            1'b1: begin
+                case (funct3)
+                    3'b000: begin // sb
+                        case (alu_result[1:0])
+                            2'b00: dmem_mask = 4'b0001;
+                            2'b01: dmem_mask = 4'b0010;
+                            2'b10: dmem_mask = 4'b0100;
+                            2'b11: dmem_mask = 4'b1000;
+                            default: dmem_mask = 4'b0000;
+                        endcase
+                        dmem_wdata = {rs2_data[7:0], rs2_data[7:0], rs2_data[7:0], rs2_data[7:0]};
+                    end
+                    3'b001: begin // sh
+                        case (alu_result[1])
+                            1'b0: dmem_mask = 4'b0011;
+                            1'b1: dmem_mask = 4'b1100;
+                            default: dmem_mask = 4'b0000;
+                        endcase
+                        dmem_wdata = {rs2_data[15:0], rs2_data[15:0]};
+                    end
+                    3'b010: begin // sw
+                        dmem_mask = 4'b1111;
+                        dmem_wdata = rs2_data;
+                    end
+                    default: ;
+                endcase
+            end
+            1'b0: begin
+                case (mem_ren)
+                    1'b1: begin
+                        case (funct3)
+                            3'b000, 3'b100: begin // lb, lbu
+                                case (alu_result[1:0])
+                                    2'b00: dmem_mask = 4'b0001;
+                                    2'b01: dmem_mask = 4'b0010;
+                                    2'b10: dmem_mask = 4'b0100;
+                                    2'b11: dmem_mask = 4'b1000;
+                                    default: dmem_mask = 4'b0000;
+                                endcase
+                            end
+                            3'b001, 3'b101: begin // lh, lhu
+                                case (alu_result[1])
+                                    1'b0: dmem_mask = 4'b0011;
+                                    1'b1: dmem_mask = 4'b1100;
+                                    default: dmem_mask = 4'b0000;
+                                endcase
+                            end
+                            3'b010: dmem_mask = 4'b1111; // lw
+                            default: ;
+                        endcase
+                    end
+                    default: ;
+                endcase
+            end
+            default: ;
+        endcase
     end
     assign o_dmem_mask = dmem_mask;
     assign o_dmem_wdata = dmem_wdata;

@@ -126,9 +126,15 @@ module control_unit (
             end
 
             7'b1110011: begin // System (ebreak)
-                if (i_funct3 == 3'b000 && i_funct7 == 7'b0000000) begin
-                    o_halt = 1;
-                end
+                case (i_funct3)
+                    3'b000: begin
+                        case (i_funct7)
+                            7'b0000000: o_halt = 1;
+                            default: ;
+                        endcase
+                    end
+                    default: ;
+                endcase
             end
 
             default: ;
